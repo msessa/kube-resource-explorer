@@ -17,6 +17,9 @@ func MinMax_int64(array []int64) (int64, int64) {
 }
 
 func MinMax_float64(array []float64) (float64, float64) {
+	if len(array) == 0 {
+		return 0, 0
+	}
 	var max float64 = array[0]
 	var min float64 = array[0]
 	for _, value := range array {

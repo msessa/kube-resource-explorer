@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/dpetzold/kube-resource-explorer/pkg/kube"
-
 	"k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
@@ -33,17 +32,18 @@ func main() {
 	}
 
 	var (
-		namespace  = flag.String("namespace", "default", "filter by namespace (defaults to all)")
-		sort       = flag.String("sort", "CpuReq", "field to sort by")
-		reverse    = flag.Bool("reverse", false, "reverse sort output")
-		historical = flag.Bool("historical", false, "show historical info")
-		duration   = flag.Duration("duration", default_duration, "specify the duration")
-		mem_only   = flag.Bool("mem", false, "show historical memory info")
-		cpu_only   = flag.Bool("cpu", false, "show historical cpu info")
-		project    = flag.String("project", "", "Project id")
-		workers    = flag.Int("workers", 5, "Number of workers for historical")
-		csv        = flag.Bool("csv", false, "Export results to csv file")
-		kubeconfig *string
+		namespace     = flag.String("namespace", "default", "filter by namespace (defaults to all)")
+		sort          = flag.String("sort", "CpuReq", "field to sort by")
+		reverse       = flag.Bool("reverse", false, "reverse sort output")
+		historical    = flag.Bool("historical", false, "show historical info")
+		duration      = flag.Duration("duration", default_duration, "specify the duration")
+		mem_only      = flag.Bool("mem", false, "show historical memory info")
+		cpu_only      = flag.Bool("cpu", false, "show historical cpu info")
+		project       = flag.String("project", "", "Project id")
+		prometheusurl = flag.String("prometheusurl", "", "Prometheus API URL")
+		workers       = flag.Int("workers", 5, "Number of workers for historical")
+		csv           = flag.Bool("csv", false, "Export results to csv file")
+		kubeconfig    *string
 	)
 
 	if home := homeDir(); home != "" {
@@ -68,8 +68,8 @@ func main() {
 
 	if *historical {
 
-		if *project == "" {
-			fmt.Printf("-project is required for historical data\n")
+		if *project == "" && *prometheusurl == "" {
+			fmt.Printf("-project or -prometheusurl are required for historical data\n")
 			os.Exit(1)
 		}
 
@@ -89,8 +89,11 @@ func main() {
 		} else {
 			panic("Unknown metric type")
 		}
-
-		k.Historical(*project, *namespace, *workers, resourceName, *duration, *sort, *reverse, *csv)
+		if *project != "" {
+			k.StackDriverHistorical(*project, *namespace, *workers, resourceName, *duration, *sort, *reverse, *csv)
+		} else if *prometheusurl != "" {
+			k.PrometheusHistorical(*prometheusurl, *namespace, *workers, resourceName, *duration, *sort, *reverse, *csv)
+		}
 
 	} else {
 

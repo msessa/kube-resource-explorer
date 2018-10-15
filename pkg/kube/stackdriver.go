@@ -8,13 +8,11 @@ import (
 
 	monitoring "cloud.google.com/go/monitoring/apiv3"
 	log "github.com/Sirupsen/logrus"
-
-	"k8s.io/api/core/v1"
-
 	"github.com/golang/protobuf/ptypes/timestamp"
 	"golang.org/x/net/context"
 	"google.golang.org/api/iterator"
 	monitoringpb "google.golang.org/genproto/googleapis/monitoring/v3"
+	"k8s.io/api/core/v1"
 )
 
 type StackDriverClient struct {
@@ -245,10 +243,9 @@ func (s *StackDriverClient) Worker(jobs <-chan *MetricJob, collector chan<- *Con
 		collector <- m
 	}
 
-	close(collector)
 }
 
-func (k *KubeClient) Historical(project, namespace string, workers int, resourceName v1.ResourceName, duration time.Duration, sort string, reverse bool, csv bool) {
+func (k *KubeClient) StackDriverHistorical(project, namespace string, workers int, resourceName v1.ResourceName, duration time.Duration, sort string, reverse bool, csv bool) {
 
 	stackDriver := NewStackDriverClient(
 		project,
@@ -267,6 +264,7 @@ func (k *KubeClient) Historical(project, namespace string, workers int, resource
 	}
 
 	metrics := stackDriver.Run(jobs, collector, activePods, duration, resourceName)
+	close(collector)
 	rows, dataPoints := FormatContainerMetrics(metrics, resourceName, duration, sort, reverse)
 	PrintContainerMetrics(rows, duration, dataPoints)
 }

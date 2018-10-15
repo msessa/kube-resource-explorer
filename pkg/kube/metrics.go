@@ -1,6 +1,7 @@
 package kube
 
 import (
+	"github.com/davecgh/go-spew/spew"
 	"k8s.io/api/core/v1"
 )
 
@@ -51,6 +52,7 @@ func (m *ContainerMetrics) fmtMem() []string {
 }
 
 func (m *ContainerMetrics) toSlice() []string {
+	spew.Dump(m.MetricType)
 	switch m.MetricType {
 	case v1.ResourceMemory:
 		return m.fmtMem()

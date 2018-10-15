@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/olekukonko/tablewriter"
 	"github.com/ryanuber/columnize"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
@@ -173,6 +174,8 @@ func PrintResourceUsage(rows [][]string) {
 
 func FormatContainerMetrics(containerMetrics []*ContainerMetrics, metric_type v1.ResourceName, duration time.Duration, field string, reverse bool) (rows [][]string, total int64) {
 
+	table := tablewriter.NewWriter(os.Stdout)
+
 	sort.Slice(containerMetrics, func(i, j int) bool {
 		return cmp(containerMetrics, field, i, j, reverse)
 	})
@@ -186,6 +189,8 @@ func FormatContainerMetrics(containerMetrics []*ContainerMetrics, metric_type v1
 		mode_or_avg = "Avg"
 	}
 
+	table.SetHeader([]string{"Pod/Container", "Last", "Min", "Max", mode_or_avg})
+
 	rows = append(rows, [][]string{
 		{"Pod/Container", "Last", "Min", "Max", mode_or_avg},
 		{"-------------------------------------------------------------", "------", "------", "------", " --------"},
@@ -197,10 +202,11 @@ func FormatContainerMetrics(containerMetrics []*ContainerMetrics, metric_type v1
 		}
 		s := m.toSlice()
 		row = append(row, s...)
+		table.Append(row)
 		rows = append(rows, row)
 		total += m.DataPoints
 	}
-
+	table.Render()
 	return rows, total
 }
 

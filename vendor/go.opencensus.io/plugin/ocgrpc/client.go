@@ -25,6 +25,9 @@ import (
 // traces. Use with gRPC clients only.
 type ClientHandler struct {
 	// StartOptions allows configuring the StartOptions used to create new spans.
+	//
+	// StartOptions.SpanKind will always be set to trace.SpanKindClient
+	// for spans started by this handler.
 	StartOptions trace.StartOptions
 }
 
@@ -41,7 +44,7 @@ func (c *ClientHandler) TagConn(ctx context.Context, cti *stats.ConnTagInfo) con
 // HandleRPC implements per-RPC tracing and stats instrumentation.
 func (c *ClientHandler) HandleRPC(ctx context.Context, rs stats.RPCStats) {
 	traceHandleRPC(ctx, rs)
-	c.statsHandleRPC(ctx, rs)
+	statsHandleRPC(ctx, rs)
 }
 
 // TagRPC implements per-RPC context management.

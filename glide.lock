@@ -1,5 +1,5 @@
-hash: 41dbfa7d859f3b290459a2b5f9cf47b06f310d23bd36c922c10938bb4a3693ce
-updated: 2018-05-08T16:56:54.627532402-07:00
+hash: 3d2ed43cbca2205f1fc211e773a60f6db8b72daccb8c887e5fe6e4cf36c31582
+updated: 2018-10-16T00:16:38.665065+11:00
 imports:
 - name: cloud.google.com/go
   version: e9284bade4f43071dac5ec56c73a03a3c9fa7772
@@ -47,6 +47,20 @@ imports:
   version: 6633656539c1639d9d78127b7d47c622b5d7b6dc
 - name: github.com/json-iterator/go
   version: 13f86432b882000a51c6e610c620974462691a97
+- name: github.com/mattn/go-runewidth
+  version: ce7b0b5c7b45a81508558cd1dba6bb1e4ddb51bb
+- name: github.com/olekukonko/tablewriter
+  version: be2c049b30ccd4d3fd795d6bf7dce74e42eeedaa
+- name: github.com/prometheus/client_golang
+  version: 7866eead363ec334628dbc56e32df590a05f4696
+  subpackages:
+  - api
+  - api/prometheus
+  - api/prometheus/v1
+- name: github.com/prometheus/common
+  version: bcb74de08d37a417cb6789eec1d6c810040f0470
+  subpackages:
+  - model
 - name: github.com/ryanuber/columnize
   version: abc90934186a77966e2beeac62ed966aac0561d5
 - name: github.com/Sirupsen/logrus
@@ -315,8 +329,4 @@ imports:
   - util/homedir
   - util/integer
   - util/jsonpath
-- name: k8s.io/kubernetes
-  version: a743392937c022a87831227ef152471359fd8d9e
-  subpackages:
-  - pkg/api/v1/resource
 testImports: []

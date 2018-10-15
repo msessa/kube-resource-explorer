@@ -13,7 +13,7 @@
 // limitations under the License.
 
 // Package readme generates the README.
-package readme
+package readme // import "go.opencensus.io/internal/readme"
 
 import (
 	"context"
@@ -29,31 +29,22 @@ import (
 func statsExamples() {
 	ctx := context.Background()
 
-	videoSize, err := stats.Int64("my.org/video_size", "processed video size", "MB")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	m := stats.FindMeasure("my.org/video_size")
-	if m == nil {
-		log.Fatalln("measure not found")
-	}
+	videoSize := stats.Int64("my.org/video_size", "processed video size", "MB")
 
 	// START aggs
-	distAgg := view.DistributionAggregation{0, 1 << 32, 2 << 32, 3 << 32}
-	countAgg := view.CountAggregation{}
-	sumAgg := view.SumAggregation{}
-	meanAgg := view.MeanAggregation{}
+	distAgg := view.Distribution(0, 1<<32, 2<<32, 3<<32)
+	countAgg := view.Count()
+	sumAgg := view.Sum()
 	// END aggs
 
-	_, _, _, _ = distAgg, countAgg, sumAgg, meanAgg
+	_, _, _ = distAgg, countAgg, sumAgg
 
 	// START view
-	if err = view.Subscribe(&view.View{
+	if err := view.Register(&view.View{
 		Name:        "my.org/video_size_distribution",
 		Description: "distribution of processed video size over time",
 		Measure:     videoSize,
-		Aggregation: view.DistributionAggregation([]float64{0, 1 << 32, 2 << 32, 3 << 32}),
+		Aggregation: view.Distribution(0, 1<<32, 2<<32, 3<<32),
 	}); err != nil {
 		log.Fatalf("Failed to subscribe to view: %v", err)
 	}

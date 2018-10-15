@@ -25,7 +25,7 @@ import (
 )
 
 var (
-	m, _  = stats.Float64("m", "", "")
+	m     = stats.Float64("m", "", "")
 	k1, _ = tag.NewKey("k1")
 	k2, _ = tag.NewKey("k2")
 	k3, _ = tag.NewKey("k3")
@@ -36,7 +36,7 @@ var (
 	k8, _ = tag.NewKey("k8")
 	view  = &View{
 		Measure:     m,
-		Aggregation: DistributionAggregation{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
+		Aggregation: Distribution(1, 2, 3, 4, 5, 6, 7, 8, 9, 10),
 		TagKeys:     []tag.Key{k1, k2},
 	}
 )
@@ -46,9 +46,9 @@ var (
 func BenchmarkRecordReqCommand(b *testing.B) {
 	w := newWorker()
 
-	subscribe := &subscribeToViewReq{views: []*View{view}, err: make(chan error, 1)}
-	subscribe.handleCommand(w)
-	if err := <-subscribe.err; err != nil {
+	register := &registerViewReq{views: []*View{view}, err: make(chan error, 1)}
+	register.handleCommand(w)
+	if err := <-register.err; err != nil {
 		b.Fatal(err)
 	}
 
