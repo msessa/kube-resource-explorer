@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
+	log "github.com/Sirupsen/logrus"
+	"github.com/montanaflynn/stats"
 	api "github.com/prometheus/client_golang/api"
 	apiv1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
@@ -19,29 +22,30 @@ type PrometheusClient struct {
 	address string
 }
 
-func NewPrometheusClient(address string) *PrometheusClient {
+func NewPrometheusClient(address string) (*PrometheusClient, error) {
 	ctx := context.Background()
 	c, err := api.NewClient(api.Config{Address: address})
 	if err != nil {
-		panic(err.Error())
+		return nil, err
 	}
 
 	return &PrometheusClient{
 		ctx:     ctx,
 		client:  c,
 		address: address,
-	}
+	}, nil
 
 }
 
 type PrometheusMetricJob struct {
-	ContainerName string
-	PodName       string
-	PodUID        string
-	Duration      time.Duration
-	MetricType    v1.ResourceName
-	jobs          <-chan *MetricJob
-	collector     chan<- *ContainerMetrics
+	ContainerName  string
+	PodName        string
+	PodUID         string
+	ContainerIndex int
+	Duration       time.Duration
+	MetricType     v1.ResourceName
+	jobs           <-chan *PrometheusMetricJob
+	collector      chan<- *ContainerMetrics
 }
 
 func sortPrometheusPointsAsc(points []model.SamplePair) {
@@ -52,106 +56,77 @@ func sortPrometheusPointsAsc(points []model.SamplePair) {
 
 func evaluatePromMemMetrics(it *model.SampleStream) *ContainerMetrics {
 
-	//var points []*monitoringpb.Point
-	//set := make(map[int64]int)
+	if len(it.Values) == 0 {
+		return &ContainerMetrics{
+			MetricType: v1.ResourceMemory,
 
-	// for {
-	// 	resp, err := it.Next()
-	// 	// This doesn't work
-	// 	if err == iterator.Done {
-	// 		break
-	// 	}
-	// 	if err != nil {
-	// 		log.WithError(err).Debug("iterating")
-	// 		break
-	// 	}
+			MemoryMetrics: MemoryMetrics{
+				MemoryLast: NewMemoryResource(0),
+				MemoryMin:  NewMemoryResource(0),
+				MemoryMax:  NewMemoryResource(0),
+			},
 
-	// 	log.Debug(resp.Metric)
-	// 	log.Debug(resp.Resource)
-
-	// 	for _, point := range resp.Points {
-	// 		value := int64(point.Value.GetInt64Value())
-	// 		if _, ok := set[value]; ok {
-	// 			set[value] += 1
-	// 		} else {
-	// 			set[value] = 1
-	// 		}
-	// 		points = append(points, point)
-	// 	}
-	// }
-	var data []int64
-	for i := 1; i < len(it.Values); i++ {
-		data = append(data, int64(it.Values[i].Value))
+			DataPoints: int64(0),
+		}
 	}
 
-	// for k, _ := range set {
-	// 	data = append(data, k)
-	// }
+	var data []float64
+	for i := 1; i < len(it.Values); i++ {
+		data = append(data, float64(it.Values[i].Value))
+	}
 
 	sortPrometheusPointsAsc(it.Values)
 
-	min, max := MinMax_int64(data)
+	last := data[0]
+	mode, _ := stats.Mode(data)
+	min, _ := stats.Min(data)
+	max, _ := stats.Max(data)
 	return &ContainerMetrics{
 		MetricType: v1.ResourceMemory,
-		MemoryLast: NewMemoryResource(data[0]),
-		MemoryMin:  NewMemoryResource(min),
-		MemoryMax:  NewMemoryResource(max),
-		MemoryMode: NewMemoryResource(1),
+		MemoryMetrics: MemoryMetrics{
+			MemoryLast: NewMemoryResource(int64(last)),
+			MemoryMin:  NewMemoryResource(int64(min)),
+			MemoryMax:  NewMemoryResource(int64(max)),
+			MemoryAvg:  NewMemoryResource(int64(mode[0])),
+		},
 		DataPoints: int64(len(it.Values)),
 	}
 }
 
 func evaluatePromCpuMetrics(it *model.SampleStream) *ContainerMetrics {
-	// var points []*monitoringpb.Point
 
-	// for {
-	// 	resp, err := it.Next()
-	// 	// This doesn't work
-	// 	if err == iterator.Done {
-	// 		break
-	// 	}
-	// 	if err != nil {
-	// 		// probably isn't a critical error, see above
-	// 		log.WithError(err).Debug("iterating")
-	// 		break
-	// 	}
-
-	// 	log.Debug(resp.Metric)
-	// 	log.Debug(resp.Resource)
-
-	// 	for _, point := range resp.Points {
-	// 		points = append(points, point)
-	// 	}
-	// }
-
-	sortPrometheusPointsAsc(it.Values)
+	if len(it.Values) == 0 {
+		return &ContainerMetrics{
+			MetricType: v1.ResourceCPU,
+			CPUMetrics: CPUMetrics{
+				CpuLast: NewCpuResource(0),
+				CpuMin:  NewCpuResource(0),
+				CpuMax:  NewCpuResource(0),
+				CpuAvg:  NewCpuResource(0),
+			},
+			DataPoints: int64(0),
+		}
+	}
 
 	var data []float64
-
 	for i := 1; i < len(it.Values); i++ {
-		cur := it.Values[i]
-		//prev := it.Values[i-1]
-
-		//interval := cur.Timestamp - prev.Timestamp
-
-		//delta := float64(cur.Value) - float64(prev.Value)
-		//data = append(data, int64((delta/float64(interval))*1000))
-		data = append(data, float64(cur.Value))
+		data = append(data, float64(it.Values[i].Value))
 	}
 
-	min, max := MinMax_float64(data)
-	var last float64
-	if len(data) == 0 {
-		last = 0
-	} else {
-		last = data[0]
-	}
+	sortPrometheusPointsAsc(it.Values)
+	last := data[0]
+	mean, _ := stats.Mean(data)
+	min, _ := stats.Min(data)
+	max, _ := stats.Max(data)
+
 	return &ContainerMetrics{
 		MetricType: v1.ResourceCPU,
-		CpuLast:    NewCpuResource(int64(last * 1000)),
-		CpuMin:     NewCpuResource(int64(min * 1000)),
-		CpuMax:     NewCpuResource(int64(max * 1000)),
-		CpuAvg:     NewCpuResource(int64(average_float64(data) * 1000)),
+		CPUMetrics: CPUMetrics{
+			CpuLast: NewCpuResource(int64(last * 1000)),
+			CpuMin:  NewCpuResource(int64(min * 1000)),
+			CpuMax:  NewCpuResource(int64(max * 1000)),
+			CpuAvg:  NewCpuResource(int64(mean * 1000)),
+		},
 		DataPoints: int64(len(it.Values)),
 	}
 }
@@ -190,12 +165,12 @@ func (s *PrometheusClient) ListTimeSeries(query string, duration time.Duration) 
 		queryResult, err = apiclient.QueryRange(s.ctx, query, timeRange)
 		if err != nil {
 			switch err.(type) {
-			// case *apiv1.Error:
-			// 	if err.(*apiv1.Error).Type == "bad_data" {
-			// 		// exceeded maximum resolution. decreasing the query resolution
-			// 		log.Warn("decreasing the query resolution")
-			// 		retries--
-			// 	}
+			case *apiv1.Error:
+				if err.(*apiv1.Error).Type == "bad_data" {
+					// exceeded maximum resolution. decreasing the query resolution
+					log.Warn("decreasing the query resolution")
+					retries--
+				}
 			default:
 				panic(err.Error())
 			}
@@ -230,70 +205,97 @@ func (s *PrometheusClient) ContainerMetrics(container_name string, pod_name stri
 		it, _ := s.ListTimeSeries(query, duration)
 		m = evaluatePromCpuMetrics(it)
 	}
-	m.ContainerName = container_name
+
 	return m, nil
 }
 
-func (s *PrometheusClient) Run(jobs chan<- *PrometheusMetricJob, collector <-chan *ContainerMetrics, pods []v1.Pod, duration time.Duration, metric_type v1.ResourceName) (metrics []*ContainerMetrics) {
-
-	var jobcount int = 0
-	var resultcount int = 0
-	go func() {
-		for _, pod := range pods {
-			for _, container := range pod.Spec.Containers {
-				jobs <- &PrometheusMetricJob{
-					ContainerName: container.Name,
-					PodName:       pod.GetName(),
-					PodUID:        string(pod.ObjectMeta.UID),
-					Duration:      duration,
-					MetricType:    metric_type,
-				}
-				jobcount++
-			}
+func (s *PrometheusClient) Allocate(jobs chan<- *PrometheusMetricJob, wg *sync.WaitGroup, containerData []*ContainerResourcesMetrics, duration time.Duration) {
+	// for _, pod := range pods {
+	// 	for _, container := range pod.Spec.Containers {
+	for i, crm := range containerData {
+		jobs <- &PrometheusMetricJob{
+			ContainerName:  crm.ContainerName,
+			PodName:        crm.PodName,
+			Duration:       duration,
+			MetricType:     v1.ResourceCPU,
+			ContainerIndex: i,
 		}
-		close(jobs)
-	}()
-
-	for job := range collector {
-		metrics = append(metrics, job)
-		resultcount++
-		if resultcount == jobcount {
-			break
+		jobs <- &PrometheusMetricJob{
+			ContainerName:  crm.ContainerName,
+			PodName:        crm.PodName,
+			Duration:       duration,
+			MetricType:     v1.ResourceMemory,
+			ContainerIndex: i,
 		}
+		log.Debugf("Dispatched job for %s/%s", crm.PodName, crm.ContainerName)
 	}
-
-	return
+	// 	}
+	// }
+	close(jobs)
 }
 
-func (s *PrometheusClient) Worker(jobs <-chan *PrometheusMetricJob, collector chan<- *ContainerMetrics) {
+func (s *PrometheusClient) Worker(jobs <-chan *PrometheusMetricJob, collector chan<- *ContainerMetrics, wg *sync.WaitGroup) {
 
 	for job := range jobs {
+
 		m, _ := s.ContainerMetrics(job.ContainerName, job.PodName, job.Duration, job.MetricType)
-		m.PodName = job.PodName
+		m.ContainerIndex = job.ContainerIndex
 		collector <- m
+		log.Debugf("Completed job for %s/%s. Retrieved %d datapoints", job.PodName, job.ContainerName, m.DataPoints)
 	}
+	wg.Done()
 }
 
-func (k *KubeClient) PrometheusHistorical(address, namespace string, workers int, resourceName v1.ResourceName, duration time.Duration, sort string, reverse bool, csv bool) {
+func (s *PrometheusClient) Collect(collector <-chan *ContainerMetrics, resultsCh chan<- []*ContainerMetrics) {
+	var metrics []*ContainerMetrics
+	for result := range collector {
+		metrics = append(metrics, result)
+	}
+	resultsCh <- metrics
+}
 
-	prometheus := NewPrometheusClient(
-		address,
-	)
+func (k *KubeClient) GetPrometheusHistorical(prometheus_url string, containerData []*ContainerResourcesMetrics, workers int, cpu bool, mem bool, duration time.Duration) ([]*ContainerResourcesMetrics, error) {
+	var metrics []*ContainerMetrics
 
-	activePods, err := k.ActivePods(namespace, "")
+	prometheus, err := NewPrometheusClient(prometheus_url)
 	if err != nil {
-		panic(err.Error())
+		return nil, err
 	}
 
+	// Create dispatcher and collector channels
 	jobs := make(chan *PrometheusMetricJob, workers)
 	collector := make(chan *ContainerMetrics)
+	// Create WaitGroup
+	var wg sync.WaitGroup
+
+	log.Debug("Starting dispatcher routine")
+	go prometheus.Allocate(jobs, &wg, containerData, duration)
+
+	resultCh := make(chan []*ContainerMetrics)
+	log.Debug("Starting collector routine")
+	go prometheus.Collect(collector, resultCh)
 
 	for i := 0; i <= workers; i++ {
-		go prometheus.Worker(jobs, collector)
+		log.Debugf("Starting worker %d", i)
+		wg.Add(1)
+		go prometheus.Worker(jobs, collector, &wg)
 	}
 
-	metrics := prometheus.Run(jobs, collector, activePods, duration, resourceName)
+	// Wait for completion
+	wg.Wait()
+	log.Debug("All workers have terminated")
 	close(collector)
-	rows, dataPoints := FormatContainerMetrics(metrics, resourceName, duration, sort, reverse)
-	PrintContainerMetrics(rows, duration, dataPoints)
+	metrics = <-resultCh
+
+	outputData := containerData
+	for _, metric := range metrics {
+		if metric.MetricType == v1.ResourceMemory {
+			outputData[metric.ContainerIndex].MemoryMetrics = metric.MemoryMetrics
+		}
+		if metric.MetricType == v1.ResourceCPU {
+			outputData[metric.ContainerIndex].CPUMetrics = metric.CPUMetrics
+		}
+	}
+
+	return outputData, nil
 }

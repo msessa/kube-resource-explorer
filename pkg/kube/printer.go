@@ -172,44 +172,6 @@ func PrintResourceUsage(rows [][]string) {
 	fmt.Println(columnize.SimpleFormat(formatted))
 }
 
-func FormatContainerMetrics(containerMetrics []*ContainerMetrics, metric_type v1.ResourceName, duration time.Duration, field string, reverse bool) (rows [][]string, total int64) {
-
-	table := tablewriter.NewWriter(os.Stdout)
-
-	sort.Slice(containerMetrics, func(i, j int) bool {
-		return cmp(containerMetrics, field, i, j, reverse)
-	})
-
-	var mode_or_avg string
-
-	switch metric_type {
-	case v1.ResourceMemory:
-		mode_or_avg = "Mode"
-	case v1.ResourceCPU:
-		mode_or_avg = "Avg"
-	}
-
-	table.SetHeader([]string{"Pod/Container", "Last", "Min", "Max", mode_or_avg})
-
-	rows = append(rows, [][]string{
-		{"Pod/Container", "Last", "Min", "Max", mode_or_avg},
-		{"-------------------------------------------------------------", "------", "------", "------", " --------"},
-	}...)
-
-	for _, m := range containerMetrics {
-		row := []string{
-			fmt.Sprintf("%s/%s", m.PodName, m.ContainerName),
-		}
-		s := m.toSlice()
-		row = append(row, s...)
-		table.Append(row)
-		rows = append(rows, row)
-		total += m.DataPoints
-	}
-	table.Render()
-	return rows, total
-}
-
 func PrintContainerMetrics(rows [][]string, duration time.Duration, total int64) {
 
 	p := message.NewPrinter(language.English)
@@ -221,4 +183,58 @@ func PrintContainerMetrics(rows [][]string, duration time.Duration, total int64)
 
 	fmt.Println(columnize.SimpleFormat(table))
 	fmt.Printf("\nResults shown are for a period of %s. %s data points were evaluted.\n", duration.String(), p.Sprintf("%d", total))
+}
+
+// func getMetricsForPodContainerAndType(metrics []*ContainerMetrics, name string, resource_type v1.ResourceName) *ContainerMetrics {
+// 	for _, u := range metrics {
+// 		if u.FullName == name && u.MetricType == resource_type {
+// 			return u
+// 		}
+// 	}
+// 	return nil
+// }
+
+func (k *KubeClient) PrintData(resources []*ContainerResourcesMetrics, capacity v1.ResourceList, byowner bool) {
+	table := tablewriter.NewWriter(os.Stdout)
+	table.SetHeader([]string{"Pod/Container", "CPU Req", "CPU Lim", "CPU Avg", "CPU Max", "Mem Req", "Mem Lim", "Mem Avg", "Mem Max"})
+
+	// Group resources by owner controller
+	//rs := make(map[string][]*ContainerResources)
+	//var outputResources []*ContainerResources
+	// for _, v := range resources {
+	// 	k := fmt.Sprintf("%s/%s/%s", v.OwnerKind, v.OwnerName, v.ContainerName)
+	// 	rs[k] = append(rs[k], v)
+	// }
+	// spew.Dump(rs)
+
+	for _, u := range resources {
+		row := []string{fmt.Sprintf("%s/%s/%s", u.OwnerKind, u.OwnerName, u.ContainerName)}
+
+		row = append(row, u.CPUResources.CpuReq.String(), u.CPUResources.CpuLimit.String())
+		if u.CPUMetrics != (CPUMetrics{}) {
+			//CpuStats := getMetricsForPodContainerAndType(metrics, u.Name, v1.ResourceCPU)
+			//if u.CPUMetrics != nil {
+			row = append(row, u.CPUMetrics.CpuAvg.String(), u.CPUMetrics.CpuMax.String())
+			//} else {
+			//	row = append(row, "NoData", "NoData")
+			//}
+		} else {
+			row = append(row, "NoData", "NoData")
+		}
+
+		row = append(row, u.MemoryResources.MemReq.String(), u.MemoryResources.MemLimit.String())
+		if u.MemoryMetrics != (MemoryMetrics{}) {
+			//MemStats := getMetricsForPodContainerAndType(metrics, u.Name, v1.ResourceMemory)
+			//if MemStats != nil {
+			row = append(row, u.MemoryMetrics.MemoryAvg.String(), u.MemoryMetrics.MemoryMax.String())
+			//} else {
+			//	row = append(row, "NoData", "NoData")
+			//}
+		} else {
+			row = append(row, "NoData", "NoData")
+		}
+		table.Append(row)
+	}
+	table.Render()
+
 }

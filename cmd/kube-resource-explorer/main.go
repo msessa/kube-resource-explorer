@@ -2,14 +2,12 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/dpetzold/kube-resource-explorer/pkg/kube"
-	"k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	"k8s.io/client-go/tools/clientcmd"
@@ -32,18 +30,18 @@ func main() {
 	}
 
 	var (
-		namespace     = flag.String("namespace", "default", "filter by namespace (defaults to all)")
-		sort          = flag.String("sort", "CpuReq", "field to sort by")
-		reverse       = flag.Bool("reverse", false, "reverse sort output")
-		historical    = flag.Bool("historical", false, "show historical info")
-		duration      = flag.Duration("duration", default_duration, "specify the duration")
-		mem_only      = flag.Bool("mem", false, "show historical memory info")
-		cpu_only      = flag.Bool("cpu", false, "show historical cpu info")
-		project       = flag.String("project", "", "Project id")
-		prometheusurl = flag.String("prometheusurl", "", "Prometheus API URL")
-		workers       = flag.Int("workers", 5, "Number of workers for historical")
-		csv           = flag.Bool("csv", false, "Export results to csv file")
-		kubeconfig    *string
+		namespace = flag.String("namespace", "default", "filter by namespace (defaults to all)")
+		//sort           = flag.String("sort", "CpuReq", "field to sort by")
+		//reverse        = flag.Bool("reverse", false, "reverse sort output")
+		//historical     = flag.Bool("historical", false, "show historical info")
+		byowner        = flag.Bool("byowner", false, "aggregate results by owner (eg. Deployment or DaemonSet)")
+		duration       = flag.Duration("duration", default_duration, "specify the duration")
+		historycal_mem = flag.Bool("historical_mem", false, "show historical memory info")
+		historycal_cpu = flag.Bool("historical_cpu", false, "show historical cpu info")
+		prometheusurl  = flag.String("prometheusurl", "", "Prometheus API URL for historical data")
+		workers        = flag.Int("workers", 5, "Number of workers for historical")
+		//csv            = flag.Bool("csv", false, "Export results to csv file")
+		kubeconfig *string
 	)
 
 	if home := homeDir(); home != "" {
@@ -51,7 +49,7 @@ func main() {
 	} else {
 		kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
 	}
-
+	log.SetLevel(log.InfoLevel)
 	flag.Parse()
 
 	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
@@ -66,44 +64,25 @@ func main() {
 
 	k := kube.NewKubeClient(clientset)
 
-	if *historical {
-
-		if *project == "" && *prometheusurl == "" {
-			fmt.Printf("-project or -prometheusurl are required for historical data\n")
-			os.Exit(1)
-		}
-
-		m := kube.ContainerMetrics{}
-
-		if !m.Validate(*sort) {
-			fmt.Printf("\"%s\" is not a valid field. Possible values are:\n\n%s\n", *sort, strings.Join(kube.GetFields(&m), ", "))
-			os.Exit(1)
-		}
-
-		var resourceName v1.ResourceName
-
-		if *mem_only {
-			resourceName = v1.ResourceMemory
-		} else if *cpu_only {
-			resourceName = v1.ResourceCPU
-		} else {
-			panic("Unknown metric type")
-		}
-		if *project != "" {
-			k.StackDriverHistorical(*project, *namespace, *workers, resourceName, *duration, *sort, *reverse, *csv)
-		} else if *prometheusurl != "" {
-			k.PrometheusHistorical(*prometheusurl, *namespace, *workers, resourceName, *duration, *sort, *reverse, *csv)
-		}
-
-	} else {
-
-		r := kube.ContainerResources{}
-
-		if !r.Validate(*sort) {
-			fmt.Printf("\"%s\" is not a valid field. Possible values are:\n\n%s\n", *sort, strings.Join(kube.GetFields(r), ", "))
-			os.Exit(1)
-		}
-
-		k.ResourceUsage(*namespace, *sort, *reverse, *csv)
+	if *prometheusurl == "" && (*historycal_cpu || *historycal_mem) {
+		log.Error(" -prometheusurl is required for historical data")
+		os.Exit(1)
 	}
+
+	containerData, clusterCapacity, err := k.GetKubeResourceUsage(*namespace)
+	if err != nil {
+		log.WithError(err).Error("Unable to retrieve cluster resource data")
+		os.Exit(1)
+	}
+
+	if *historycal_cpu || *historycal_mem {
+		log.Info("Retrieving historical data")
+		containerData, err = k.GetPrometheusHistorical(*prometheusurl, containerData, *workers, *historycal_cpu, *historycal_mem, *duration)
+		if err != nil {
+			log.WithError(err).Error("Unable to retrieve historical memory data")
+			os.Exit(1)
+		}
+	}
+
+	k.PrintData(containerData, clusterCapacity, *byowner)
 }

@@ -74,7 +74,7 @@ func NodeCapacity(node *api_v1.Node) api_v1.ResourceList {
 	return allocatable
 }
 
-func (k *KubeClient) NodeResources(namespace, nodeName string) (resources []*ContainerResources, err error) {
+func (k *KubeClient) NodeResources(namespace, nodeName string) (resources []*ContainerResourcesMetrics, err error) {
 
 	mc := k.clientset.Core().Nodes()
 	node, err := mc.Get(nodeName, metav1.GetOptions{})
@@ -91,7 +91,19 @@ func (k *KubeClient) NodeResources(namespace, nodeName string) (resources []*Con
 
 	// https://github.com/kubernetes/kubernetes/blob/master/pkg/printers/internalversion/describe.go#L2970
 	for _, pod := range activePodsList {
+		var ownerName, ownerKind string
+		ownerRefs := pod.GetObjectMeta().GetOwnerReferences()
+		if len(ownerRefs) > 0 {
+			// Store the owner controller name
+			ownerName = ownerRefs[0].Name
+			ownerKind = ownerRefs[0].Kind
+		} else {
+			ownerName = pod.GetName()
+			ownerKind = pod.Kind
+		}
+
 		for _, container := range pod.Spec.Containers {
+
 			req, limit := containerRequestsAndLimits(&container)
 
 			_cpuReq := req[api_v1.ResourceCPU]
@@ -106,17 +118,14 @@ func (k *KubeClient) NodeResources(namespace, nodeName string) (resources []*Con
 			_memoryLimit := limit[api_v1.ResourceMemory]
 			memoryLimit := NewMemoryResource(_memoryLimit.Value())
 
-			resources = append(resources, &ContainerResources{
-				Name:               fmt.Sprintf("%s/%s", pod.GetName(), container.Name),
-				Namespace:          pod.GetNamespace(),
-				CpuReq:             cpuReq,
-				CpuLimit:           cpuLimit,
-				PercentCpuReq:      cpuReq.calcPercentage(capacity.Cpu()),
-				PercentCpuLimit:    cpuLimit.calcPercentage(capacity.Cpu()),
-				MemReq:             memoryReq,
-				MemLimit:           memoryLimit,
-				PercentMemoryReq:   memoryReq.calcPercentage(capacity.Memory()),
-				PercentMemoryLimit: memoryLimit.calcPercentage(capacity.Memory()),
+			resources = append(resources, &ContainerResourcesMetrics{
+				ContainerName:   container.Name,
+				PodName:         pod.GetName(),
+				Namespace:       pod.GetNamespace(),
+				OwnerName:       ownerName,
+				OwnerKind:       ownerKind,
+				CPUResources:    CPUResources{CpuReq: cpuReq, CpuLimit: cpuLimit, PercentCpuReq: cpuReq.calcPercentage(capacity.Cpu()), PercentCpuLimit: cpuLimit.calcPercentage(capacity.Cpu())},
+				MemoryResources: MemoryResources{MemReq: memoryReq, MemLimit: memoryLimit, PercentMemoryReq: memoryReq.calcPercentage(capacity.Memory()), PercentMemoryLimit: memoryLimit.calcPercentage(capacity.Memory())},
 			})
 		}
 	}
@@ -124,7 +133,7 @@ func (k *KubeClient) NodeResources(namespace, nodeName string) (resources []*Con
 	return resources, nil
 }
 
-func (k *KubeClient) ContainerResources(namespace string) (resources []*ContainerResources, err error) {
+func (k *KubeClient) ContainerResources(namespace string) (resources []*ContainerResourcesMetrics, err error) {
 	nodes, err := k.clientset.CoreV1().Nodes().List(metav1.ListOptions{})
 	if err != nil {
 		return nil, err
@@ -167,31 +176,46 @@ func (k *KubeClient) ClusterCapacity() (capacity api_v1.ResourceList, err error)
 	return capacity, nil
 }
 
-func (k *KubeClient) ResourceUsage(namespace, sort string, reverse bool, csv bool) {
-
+func (k *KubeClient) GetKubeResourceUsage(namespace string) ([]*ContainerResourcesMetrics, api_v1.ResourceList, error) {
 	resources, err := k.ContainerResources(namespace)
 	if err != nil {
-		panic(err.Error())
+		return nil, nil, err
 	}
 
 	capacity, err := k.ClusterCapacity()
 	if err != nil {
-		panic(err.Error())
+		return nil, nil, err
 	}
 
-	rows := FormatResourceUsage(capacity, resources, sort, reverse)
+	return resources, capacity, nil
 
-	if csv {
-		prefix := "kube-resource-usage"
-		if namespace == "" {
-			prefix += "-all"
-		} else {
-			prefix += fmt.Sprintf("-%s", namespace)
-		}
-
-		filename := ExportCSV(prefix, rows)
-		fmt.Printf("Exported %d rows to %s\n", len(rows), filename)
-	} else {
-		PrintResourceUsage(rows)
-	}
 }
+
+// func (k *KubeClient) ResourceUsage(namespace, sort string, reverse bool, csv bool) {
+
+// 	resources, err := k.ContainerResources(namespace)
+// 	if err != nil {
+// 		panic(err.Error())
+// 	}
+
+// 	capacity, err := k.ClusterCapacity()
+// 	if err != nil {
+// 		panic(err.Error())
+// 	}
+
+// 	rows := FormatResourceUsage(capacity, resources, sort, reverse)
+
+// 	if csv {
+// 		prefix := "kube-resource-usage"
+// 		if namespace == "" {
+// 			prefix += "-all"
+// 		} else {
+// 			prefix += fmt.Sprintf("-%s", namespace)
+// 		}
+
+// 		filename := ExportCSV(prefix, rows)
+// 		fmt.Printf("Exported %d rows to %s\n", len(rows), filename)
+// 	} else {
+// 		PrintResourceUsage(rows)
+// 	}
+// }

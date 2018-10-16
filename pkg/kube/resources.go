@@ -53,9 +53,40 @@ func (r *CpuResource) ToQuantity() *resource.Quantity {
 	return resource.NewMilliQuantity(r.MilliValue(), resource.DecimalSI)
 }
 
+type MemoryMetrics struct {
+	MemoryMin  *MemoryResource
+	MemoryMax  *MemoryResource
+	MemoryAvg  *MemoryResource
+	MemoryLast *MemoryResource
+}
+
+type MemoryResources struct {
+	MemReq             *MemoryResource
+	MemLimit           *MemoryResource
+	PercentMemoryReq   int64
+	PercentMemoryLimit int64
+}
+
+type CPUResources struct {
+	CpuReq          *CpuResource
+	CpuLimit        *CpuResource
+	PercentCpuReq   int64
+	PercentCpuLimit int64
+}
+type CPUMetrics struct {
+	CpuMin  *CpuResource
+	CpuMax  *CpuResource
+	CpuAvg  *CpuResource
+	CpuLast *CpuResource
+}
+
 type ContainerResources struct {
 	Name               string
+	ContainerName      string
+	PodName            string
 	Namespace          string
+	OwnerName          string
+	OwnerKind          string
 	CpuReq             *CpuResource
 	CpuLimit           *CpuResource
 	PercentCpuReq      int64
@@ -64,6 +95,18 @@ type ContainerResources struct {
 	MemLimit           *MemoryResource
 	PercentMemoryReq   int64
 	PercentMemoryLimit int64
+}
+
+type ContainerResourcesMetrics struct {
+	ContainerName   string
+	PodName         string
+	Namespace       string
+	OwnerName       string
+	OwnerKind       string
+	CPUResources    CPUResources
+	MemoryResources MemoryResources
+	CPUMetrics      CPUMetrics
+	MemoryMetrics   MemoryMetrics
 }
 
 func (r ContainerResources) Validate(field string) bool {
