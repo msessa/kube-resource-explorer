@@ -40,8 +40,8 @@ func main() {
 		historycal_cpu = flag.Bool("historical_cpu", false, "show historical cpu info")
 		prometheusurl  = flag.String("prometheusurl", "", "Prometheus API URL for historical data")
 		workers        = flag.Int("workers", 5, "Number of workers for historical")
-		//csv            = flag.Bool("csv", false, "Export results to csv file")
-		kubeconfig *string
+		csv            = flag.Bool("csv", false, "Export results in CSV format")
+		kubeconfig     *string
 	)
 
 	if home := homeDir(); home != "" {
@@ -84,5 +84,7 @@ func main() {
 		}
 	}
 
-	k.PrintData(containerData, clusterCapacity, *byowner)
+	printData := k.PrepareForPrinting(containerData, *byowner, *csv)
+
+	k.PrintData(printData, clusterCapacity, *csv)
 }

@@ -6,9 +6,11 @@ import (
 	"log"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/fatih/color"
 	"github.com/olekukonko/tablewriter"
 	"github.com/ryanuber/columnize"
 	"golang.org/x/text/language"
@@ -194,47 +196,130 @@ func PrintContainerMetrics(rows [][]string, duration time.Duration, total int64)
 // 	return nil
 // }
 
-func (k *KubeClient) PrintData(resources []*ContainerResourcesMetrics, capacity v1.ResourceList, byowner bool) {
-	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{"Pod/Container", "CPU Req", "CPU Lim", "CPU Avg", "CPU Max", "Mem Req", "Mem Lim", "Mem Avg", "Mem Max"})
+type PrintableData struct {
+	Rows    [][]string
+	RawRows [][]string
+	Header  []string
+}
 
-	// Group resources by owner controller
-	//rs := make(map[string][]*ContainerResources)
-	//var outputResources []*ContainerResources
-	// for _, v := range resources {
-	// 	k := fmt.Sprintf("%s/%s/%s", v.OwnerKind, v.OwnerName, v.ContainerName)
-	// 	rs[k] = append(rs[k], v)
-	// }
-	// spew.Dump(rs)
+func (k *KubeClient) PrepareForPrinting(resources []*ContainerResourcesMetrics, byowner bool, csv bool) PrintableData {
+	var outputData PrintableData
+	if byowner {
+		outputData.Header = []string{"Entity", "# Pods", "CPU Req", "CPU Lim", "CPU Avg", "CPU Max", "CPU Waste", "Mem Req", "Mem Lim", "Mem Avg", "Mem Max", "Mem Waste"}
 
-	for _, u := range resources {
-		row := []string{fmt.Sprintf("%s/%s/%s", u.OwnerKind, u.OwnerName, u.ContainerName)}
-
-		row = append(row, u.CPUResources.CpuReq.String(), u.CPUResources.CpuLimit.String())
-		if u.CPUMetrics != (CPUMetrics{}) {
-			//CpuStats := getMetricsForPodContainerAndType(metrics, u.Name, v1.ResourceCPU)
-			//if u.CPUMetrics != nil {
-			row = append(row, u.CPUMetrics.CpuAvg.String(), u.CPUMetrics.CpuMax.String())
-			//} else {
-			//	row = append(row, "NoData", "NoData")
-			//}
-		} else {
-			row = append(row, "NoData", "NoData")
+		// Aggregate metrics by owner name. Slice -> Map
+		aggregatedData := make(map[string][]*ContainerResourcesMetrics)
+		for _, v := range resources {
+			entityId := fmt.Sprintf("%s/%s/%s", v.OwnerKind, v.OwnerName, v.ContainerName)
+			aggregatedData[entityId] = append(aggregatedData[entityId], v)
 		}
 
-		row = append(row, u.MemoryResources.MemReq.String(), u.MemoryResources.MemLimit.String())
-		if u.MemoryMetrics != (MemoryMetrics{}) {
-			//MemStats := getMetricsForPodContainerAndType(metrics, u.Name, v1.ResourceMemory)
-			//if MemStats != nil {
-			row = append(row, u.MemoryMetrics.MemoryAvg.String(), u.MemoryMetrics.MemoryMax.String())
-			//} else {
-			//	row = append(row, "NoData", "NoData")
-			//}
-		} else {
-			row = append(row, "NoData", "NoData")
+		// For each owner, average all metrics across pods
+		for k, v := range aggregatedData {
+			var row []string
+			var rawRow []string
+			row = append(row, k)
+			row = append(row, fmt.Sprintf("%d", len(v)))
+			rawRow = append(rawRow, k)
+			rawRow = append(rawRow, fmt.Sprintf("%d", len(v)))
+
+			var AvgCPUReq, AvgCPULim, AvgMemReq, AvgMemLim int64
+			var AvgCPUAvg, AvgCPUMax, AvgMemAvg, AvgMemMax int64
+			for _, m := range v {
+				AvgCPUReq += m.CPUResources.CpuReq.MilliValue()
+				AvgCPULim += m.CPUResources.CpuLimit.MilliValue()
+				AvgMemReq += m.MemoryResources.MemReq.Value()
+				AvgMemLim += m.MemoryResources.MemLimit.Value()
+				AvgCPUAvg += m.CPUMetrics.CpuAvg.MilliValue()
+				AvgCPUMax += m.CPUMetrics.CpuMax.MilliValue()
+				AvgMemAvg += m.MemoryMetrics.MemoryAvg.Value()
+				AvgMemMax += m.MemoryMetrics.MemoryMax.Value()
+			}
+			AvgCPUReq /= int64(len(v))
+			AvgCPULim /= int64(len(v))
+			AvgMemReq /= int64(len(v))
+			AvgMemLim /= int64(len(v))
+			AvgCPUAvg /= int64(len(v))
+			AvgCPUMax /= int64(len(v))
+			AvgMemAvg /= int64(len(v))
+			AvgMemMax /= int64(len(v))
+
+			row = append(row, NewCpuResource(AvgCPUReq).String())
+			row = append(row, NewCpuResource(AvgCPULim).String())
+			row = append(row, NewCpuResource(AvgCPUAvg).String())
+			row = append(row, NewCpuResource(AvgCPUMax).String())
+
+			rawRow = append(rawRow,
+				strconv.FormatInt(AvgCPUReq, 10),
+				strconv.FormatInt(AvgCPULim, 10),
+				strconv.FormatInt(AvgCPUAvg, 10),
+				strconv.FormatInt(AvgCPUMax, 10),
+				strconv.FormatInt(AvgCPUReq-AvgCPUAvg, 10),
+			)
+
+			// if AvgCPUReq > 0 && AvgCPUAvg > 0 {
+			// 	row = append(row, strconv.FormatInt(calcPercentage(AvgCPUReq, AvgCPUAvg), 10))
+			// } else {
+			// 	row = append(row, "0")
+			// }
+			if !csv {
+				if (AvgCPUReq - AvgCPUAvg) > 500 {
+					row = append(row, color.RedString(NewCpuResource(AvgCPUReq-AvgCPUAvg).String()))
+				} else if (AvgCPUReq - AvgCPUAvg) > 200 {
+					row = append(row, color.YellowString(NewCpuResource(AvgCPUReq-AvgCPUAvg).String()))
+				} else {
+					row = append(row, color.GreenString(NewCpuResource(AvgCPUReq-AvgCPUAvg).String()))
+				}
+
+			} else {
+				row = append(row, NewCpuResource(AvgCPUReq-AvgCPUAvg).String())
+			}
+
+			row = append(row, NewMemoryResource(AvgMemReq).String())
+			row = append(row, NewMemoryResource(AvgMemLim).String())
+			row = append(row, NewMemoryResource(AvgMemAvg).String())
+			row = append(row, NewMemoryResource(AvgMemMax).String())
+
+			rawRow = append(rawRow,
+				strconv.FormatInt(AvgMemReq, 10),
+				strconv.FormatInt(AvgMemLim, 10),
+				strconv.FormatInt(AvgMemAvg, 10),
+				strconv.FormatInt(AvgMemMax, 10),
+				strconv.FormatInt(AvgMemReq-AvgMemAvg, 10),
+			)
+			if !csv {
+				if (AvgMemReq - AvgMemAvg) > 500000000 {
+					row = append(row, color.RedString(NewMemoryResource(AvgMemReq-AvgMemAvg).String()))
+				} else if (AvgMemReq - AvgMemAvg) > 200000000 {
+					row = append(row, color.YellowString(NewMemoryResource(AvgMemReq-AvgMemAvg).String()))
+				} else {
+					row = append(row, color.GreenString(NewMemoryResource(AvgMemReq-AvgMemAvg).String()))
+				}
+			} else {
+				row = append(row, NewMemoryResource(AvgMemReq-AvgMemAvg).String())
+			}
+			outputData.RawRows = append(outputData.RawRows, rawRow)
+			outputData.Rows = append(outputData.Rows, row)
 		}
-		table.Append(row)
 	}
-	table.Render()
+	return outputData
+}
 
+func (k *KubeClient) PrintData(printdata PrintableData, capacity v1.ResourceList, export_as_csv bool) {
+
+	if export_as_csv {
+		writer := csv.NewWriter(os.Stdout)
+		defer writer.Flush()
+		writer.Write(printdata.Header)
+		writer.WriteAll(printdata.RawRows)
+
+	} else {
+		table := tablewriter.NewWriter(os.Stdout)
+		table.SetHeader(printdata.Header)
+		for _, u := range printdata.Rows {
+			table.Append(u)
+		}
+		table.SetRowLine(true)
+		table.Render()
+	}
 }

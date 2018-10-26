@@ -64,6 +64,7 @@ func evaluatePromMemMetrics(it *model.SampleStream) *ContainerMetrics {
 				MemoryLast: NewMemoryResource(0),
 				MemoryMin:  NewMemoryResource(0),
 				MemoryMax:  NewMemoryResource(0),
+				MemoryAvg:  NewMemoryResource(0),
 			},
 
 			DataPoints: int64(0),
@@ -71,7 +72,7 @@ func evaluatePromMemMetrics(it *model.SampleStream) *ContainerMetrics {
 	}
 
 	var data []float64
-	for i := 1; i < len(it.Values); i++ {
+	for i := 0; i < len(it.Values); i++ {
 		data = append(data, float64(it.Values[i].Value))
 	}
 
@@ -79,6 +80,9 @@ func evaluatePromMemMetrics(it *model.SampleStream) *ContainerMetrics {
 
 	last := data[0]
 	mode, _ := stats.Mode(data)
+	if len(mode) == 0 {
+		mode = append(mode, 0)
+	}
 	min, _ := stats.Min(data)
 	max, _ := stats.Max(data)
 	return &ContainerMetrics{
@@ -109,7 +113,7 @@ func evaluatePromCpuMetrics(it *model.SampleStream) *ContainerMetrics {
 	}
 
 	var data []float64
-	for i := 1; i < len(it.Values); i++ {
+	for i := 0; i < len(it.Values); i++ {
 		data = append(data, float64(it.Values[i].Value))
 	}
 
