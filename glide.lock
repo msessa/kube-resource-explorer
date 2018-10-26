@@ -1,5 +1,5 @@
 hash: 3d2ed43cbca2205f1fc211e773a60f6db8b72daccb8c887e5fe6e4cf36c31582
-updated: 2018-10-16T22:09:48.54392+11:00
+updated: 2018-10-26T14:22:10.887588+11:00
 imports:
 - name: cloud.google.com/go
   version: e9284bade4f43071dac5ec56c73a03a3c9fa7772
@@ -10,6 +10,8 @@ imports:
   version: 8991bc29aa16c548c550c7ff78260e27b9ab7c73
   subpackages:
   - spew
+- name: github.com/fatih/color
+  version: 3f9d52f7176a6927daacff70a3e8d1dc2025c53e
 - name: github.com/ghodss/yaml
   version: 73d445a93680fa1a78ae23a5839bad48f32ba1ee
 - name: github.com/gogo/protobuf
@@ -41,20 +43,24 @@ imports:
   version: 6633656539c1639d9d78127b7d47c622b5d7b6dc
 - name: github.com/json-iterator/go
   version: 13f86432b882000a51c6e610c620974462691a97
+- name: github.com/mattn/go-colorable
+  version: efa589957cd060542a26d2dd7832fd6a6c6c3ade
+- name: github.com/mattn/go-isatty
+  version: 3fb116b820352b7f0c281308a4d6250c22d94e27
 - name: github.com/mattn/go-runewidth
-  version: ce7b0b5c7b45a81508558cd1dba6bb1e4ddb51bb
+  version: b20a3daf6a39840c202fd42cc23d53607162b045
 - name: github.com/montanaflynn/stats
   version: db72e6cae808b936b0c01fd330ff1fcd2c86c95e
 - name: github.com/olekukonko/tablewriter
-  version: be2c049b30ccd4d3fd795d6bf7dce74e42eeedaa
+  version: f1b6297c9ba8513b43a14a78f045b5d41ce3e2b2
 - name: github.com/prometheus/client_golang
-  version: 1cafe34db7fdec6022e17e00e1c1ea501022f3e4
+  version: f30f428035633da15d00d3dfefb0128c5e569ef4
   subpackages:
   - api
   - api/prometheus
   - api/prometheus/v1
 - name: github.com/prometheus/common
-  version: bcb74de08d37a417cb6789eec1d6c810040f0470
+  version: 7e9e6cabbd393fc208072eedef99188d0ce788b6
   subpackages:
   - model
 - name: github.com/ryanuber/columnize
